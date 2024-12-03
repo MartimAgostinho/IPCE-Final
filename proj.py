@@ -111,6 +111,7 @@ class Date:
 
     # Variables shared by all the methods
     fixed_holidays = None
+    chrons         = None
     # Static methods - functions without "self"
 
     @staticmethod
@@ -167,13 +168,13 @@ class Date:
         if len(laux) != 3:
             return None
         
-        day, month, year = map(int, laux)
-        """
+        #day, month, year = map(int, laux)
+        
         try :
             day, month, year = map(int, laux)
         except:
             return None
-        """
+        
         new_date = Date(day, month, year)
 
         if not Date.is_valid(new_date):
@@ -215,7 +216,33 @@ class Date:
         """ Build the Chronology of the variable holidays for a given year.
             Precondition: year > 0
         """
-        return None
+        if year <= 0:
+            return None
+        
+        easter = Date.easter(year)
+        
+        d = dict()
+        d["Páscoa"] = easter
+
+        aux = easter
+        for n in range(47):
+            aux = Date.prev(aux)
+
+        d["Carnaval"] = aux
+
+        aux = easter
+        for n in range(2):
+            aux = Date.prev(aux)
+
+        d["Sexta-feira Santa"] = aux
+        
+        aux = easter
+        for n in range(60):
+            aux = Date.next(aux)
+
+        d["Corpo de Deus"] = aux
+
+        return Chronology(d)
  
     @staticmethod
     def fridays13(year: int) -> list[Date]:
@@ -232,7 +259,18 @@ class Date:
             if Date.day_of_the_week(date) == 5:
                 fridays_vec.append(date)
         return fridays_vec
-    
+
+    @staticmethod
+    def monthNum2Str( month: int ):
+        if month < 1 or month > 12:
+            return None
+        m = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]    
+        return m[month - 1]
+
+    #FIXME Debug 
+    def print(self :Date):
+        print( f"Dia: {self.day}, Month: { self.month }, Ano: {self.year}" )
+
     def bc_Gregorian(year: int) -> bool:
         """ checks if the Date ir before   """
 
@@ -320,7 +358,7 @@ class Date:
         day     = 1
 
         year_str = str(year)
-        month_str = str(month)
+        month_str = Date.monthNum2Str(month)
         m = [ [ ' ' for _ in range(M_cols) ] for _ in range(M_lines) ]
         if year_str != '':
             month_str += " " + year_str
@@ -332,9 +370,9 @@ class Date:
         for i in range(len(straux)):
             m[1][i] = straux[i]
 
-        FirstWeekDay = Date.day_of_the_week(Date(1, month, year))
+        FirstWeekDay = Date.day_of_the_week(Date(1, month, year)) + 1
         LastDayMonth = Date.month_length(month, year)
-        
+
         for i in range(FirstWeekDay ,int(M_cols/3) + 2):
             m[2][i*3 - 2] = str( day )
             day +=1
@@ -359,15 +397,10 @@ class Date:
         ColLen      = 66
         LinLen      = 36
         yearmatrix  = [ [ ' ' for _ in range(ColLen) ] for _ in range(LinLen) ]
-        #monthsList  = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
-        #montNDays   = [31,28,31,30,31,30,31,31,30,31,30,31]
-        #Fday = Date.day_of_the_week(Date(1, 1, year))
-        #yrl= 1
-        #yrc         = 0
 
         yearmatrix[0][0]  = str(year)
         month = 0
-        print('roar3')
+        
         for i in range(0,12,3):
             # i month
             # j month col
@@ -403,6 +436,21 @@ class Date:
                 print(s,end='')
             print()
     
+    @staticmethod
+    def Load_chronology(file_name: str,id: str)-> int: 
+
+        '''Preconditions
+            file_name -> File Exists 
+        '''
+        
+        if Date.chrons is None:
+            Date.chrons = Chronologies()
+
+        Date.chrons.load( id,file_name )
+        return len(Date.chrons.cronos[id].events)
+        #print(f"Foram carregados {len(chrons.cronos[id])} elementos.")
+
+    '''
     def read_file():
         f = open('feriados_fixos.txt', 'r', encoding="utf-8")
         Fclean = []
@@ -429,7 +477,7 @@ class Date:
             date = tokens[0]
             
             #If its not a date or doesnt have a name
-            if(not Date.is_valid(date)  ):
+            if(not Date.is_valid()  ):
                 continue
             
             d = Date()
@@ -438,14 +486,14 @@ class Date:
         f.close()
         Date.fixed_holidays = Fclean
         return None
-           
+    '''
     # Instance methods - functions with "self"---------------------------------------------------------------------------
     
     def __init__(self: Date, day: int, month: int, year: int):
         """ Initialize a date. """
-        self.day = day
-        self.month = month
-        self.year = year
+        self.day    = day
+        self.month  = month
+        self.year   = year
 
     def copy(self: Date) -> Date:
         """ Duplicate a date. """
@@ -453,8 +501,16 @@ class Date:
     
     def is_valid(self: Date) -> bool:  # PRIVATE
         """ Is the date valid? DEVE FALTAR CENAS"""
-        if Date.is_bc(self.year) or Date.is_zero(self.year):
+        
+        if Date.is_zero(self.year):
             return False
+
+        if self.month < 0 or self.month > 12:
+            return False
+        
+        if self.day > Date.month_length( self.month,self.year ) or self.day < 0:        
+            return False
+        
         return True
         
     def __repr__(self: Date) -> str:
@@ -644,11 +700,67 @@ class Chronology:
 
     @staticmethod
     def from_file(file_name: str) -> Chronology:
-        """ Load a chronology from a file. """
-        return None
+         #Util.FileExistsError
+        if not Util.file_exists(file_name):
+            return None
+        
+        f = open(file_name, 'r', encoding="utf-8")
+        d = dict()
+
+        #Remove all comments, doing it this enable comments at the end of a useful line
+        Fclean = []
+        for line in f:
+            StrAux = ''
+
+            for i in range(len(line)):
+                if line[i] == '#':
+                    StrAux += '\n'
+                    break
+
+                StrAux += line[i]
+
+            if StrAux[:-1].strip() != "":
+                Fclean.append(StrAux[:-1])
+
+        for line in Fclean:
+            dateStr = ''
+            
+            for i in range(len(line)):
+                
+                if line[i] == ' ' or line[i] == '\n':
+                    break
+
+                dateStr += line[i]
+
+            name = ''
+
+            #Skip all ' ' before name
+            for n in range( i, len(line)):
+                if( line[n] != ' ' ):
+                    break 
+
+            for j in range( n, len(line)):
+                name += line[j]
+            if len(name) < 1:
+                continue
+
+            date = Date.from_str(dateStr) 
+            if date is  None:
+                continue
+
+            d[name] = date
+            #TODO create cron class 
+            #       Add each day
+            #       Sort
+
+            #date.print()
+            #print(f"Name: {name}")
+        
+        return Chronology(d)
 
     def sort(self: Chronology):  # PRIVATE
         """ Sort by key. """
+
         return None
    
     def __repr__(self: Chronology) -> str:
@@ -786,6 +898,26 @@ class UI:   # User Interface
         res = Date.count_days(m, a)
         print(res)
 
+    def command_holidays(self: UI, args: list[str]):
+        
+        error, a, m = self.get_args(args, "ii")
+        if error : return
+        if Date.fixed_holidays is None: return
+        empty = True
+        for k in Date.fixed_holidays.events:
+            if m == Date.fixed_holidays.events[k].month:
+                print( f"{k} ---> {Date.fixed_holidays.events[k].day}/{m}/{a}" )
+                empty = False
+
+        if a > 0:
+            VarHol = Date.variable_holidays(a)
+            for k in VarHol.events:
+                if m == VarHol.events[k].month:
+                    print( f"{k} ---> {VarHol.events[k].day}/{m}/{a}" )
+                    empty = False
+        if empty:
+            print("Nada.")
+    
     def command_today(self: UI, args: list[str]):  # PRIVATE
         res = Date.todays_date()
         print(res)
@@ -821,12 +953,41 @@ class UI:   # User Interface
     def command_print_calender(self: UI, args: list[str]):
         error, y, m = self.get_args(args, "ii")
         if error: return
+        if m < 0 or m > 12:
+            return
         matrix = Date.show_year_month(y, m)
-        print('roar')
         Date.print_matrix(matrix)
         #res = Date.show_months(a, m)
     # Faltam métodos command
     
+    def command_upload_chronology(self: UI, args: list[str]):
+        
+        err,id, file_name = self.get_args( args,"ss" )
+        if err: return
+
+        if not Util.file_exists(file_name):
+            Util.error(f"Não foi possível abrir o ficheiro \'{file_name}\'")
+
+        n = Date.Load_chronology(file_name,id)
+
+        if n == 0:
+            Util.error(f"O ficheiro \'{file_name}\' contém uma cronologia inválida.")
+        else:
+            print(f"Foram carregados {n} elementos.")
+
+    def command_show_chronology(self: UI,args: list[srt]):
+        err,id = self.get_args(args,"s")
+        if err:return
+
+        c = Date.chrons.get(id)
+
+        if c is None:
+            print("Nada.")
+            return
+        
+        print(repr(c))
+
+
     def interpreter(self: UI):
         self.welcome()
         while True:
@@ -838,15 +999,15 @@ class UI:   # User Interface
             elif command == 'A': self.command_help(args)
             elif command == 'C':self.command_print_calender(args)
             elif command == 'D':self.command_days(args)
-            elif command == 'F':self.command_holidays(args)#TODO
+            elif command == 'F':self.command_holidays(args)
             #-----------------------
             elif command == 'H': self.command_today(args) 
             elif command == 'I':self.command_age(args) 
             elif command == 'M':self.command_maximum_vacations(args)  #TODO
             elif command == 'S':self.command_week_day(args)  
             elif command == 'T':self.command_friday_t(args) 
-            elif command == 'U':self.command_upload_chronology(args)  #TODO
-            elif command == 'V':self.command_show_chronology(args)  #TODO
+            elif command == 'U':self.command_upload_chronology(args)
+            elif command == 'V':self.command_show_chronology(args)  
             elif command == 'W':self.command_repeated_chronology(args)  #TODO
             elif command == 'Y':self.command_unity_chronology(args)  #TODO
             elif command == 'Z':self.command_intersection_chronology(args)  #TODO
@@ -861,7 +1022,8 @@ class UI:   # User Interface
 
 def main():
     ui = UI()
-    Date.read_file()
+    Date.set_fixed_holidays( Chronology.from_file("feriados_fixos.txt") )
+    #Chronology.from_file("Cronologias.txt")
     ui.run()
 
 main()
